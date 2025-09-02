@@ -48,6 +48,7 @@ Here is the job description:
         max_tokens=1200,
         temperature=0.7
     )
+
     return response.choices[0].message['content']
 
 # --- Convert advert text to .docx ---
