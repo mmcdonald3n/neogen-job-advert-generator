@@ -3,7 +3,16 @@ from io import BytesIO
 
 import docx
 import PyPDF2
-import openai
+from openai import OpenAI
+
+# Prefer Streamlit Secrets; fall back to env var (keep what you already have for reading the key)
+try:
+    openai_api_key = st.secrets["OPENAI_API_KEY"]
+except Exception:
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+
+client = OpenAI(api_key=openai_api_key)
+
 import streamlit as st
 from docx import Document
 
