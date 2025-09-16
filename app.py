@@ -64,7 +64,7 @@ def text_to_docx(text: str) -> BytesIO:
     return buf
 
 # --- UI ---
-st.image("assets/neogen-logo-green.webp", use_column_width=True)
+st.image("assets/neogen-logo-green.webp", use_container_width=True)
 st.title("📄 Neogen Job Advert Generator")
 st.write("Upload a Job Description (.docx or .pdf) and generate a Neogen House Style advert.")
 
