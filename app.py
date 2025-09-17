@@ -1,4 +1,5 @@
 import os
+import re
 from io import BytesIO
 from zipfile import ZipFile
 
@@ -20,7 +21,7 @@ except Exception:
 
 st.caption("🔐 OpenAI API key detected." if OPENAI_API_KEY else "❌ No OpenAI API key found. Add it in Manage app → Settings → Secrets.")
 
-# ── Helpers: extract text ────────────────────────────────────────────────────
+# ── Helpers: text extraction ─────────────────────────────────────────────────
 def extract_text_from_docx(file) -> str:
     d = docx.Document(file)
     return "\n".join(p.text for p in d.paragraphs if p.text.strip())
@@ -33,6 +34,18 @@ def extract_text_from_pdf(file) -> str:
         if txt.strip():
             parts.append(txt)
     return "\n".join(parts).strip()
+
+# ── Helpers: sanitise output (remove Markdown) ───────────────────────────────
+def strip_markdown(s: str) -> str:
+    # bold/italic/code
+    s = re.sub(r"\*\*(.*?)\*\*", r"\1", s)
+    s = re.sub(r"\*(.*?)\*", r"\1", s)
+    s = re.sub(r"`(.*?)`", r"\1", s)
+    # headings like "## Title"
+    s = re.sub(r"^\s{0,3}#{1,6}\s*", "", s, flags=re.MULTILINE)
+    # bullet symbol normalisation
+    s = s.replace("•", "-").replace("–", "-").replace("—", "-")
+    return s
 
 # ── OpenAI generator (client created lazily) ─────────────────────────────────
 HOUSE_STYLE = """
@@ -53,13 +66,15 @@ Please press Apply to submit your application.
 """
 
 def generate_neogen_advert(job_description: str) -> str:
-    from openai import OpenAI  # lazy import so UI always renders
+    # Lazy import so UI always renders even if key missing
+    from openai import OpenAI
     client = OpenAI(api_key=OPENAI_API_KEY)
 
     prompt = f"""You are a professional HR copywriter at Neogen.
 
 Using the HOUSE STYLE, rewrite the JOB DESCRIPTION into a Neogen-style job advert.
 Do not add facts that aren't in the input. Keep it concise and scannable.
+IMPORTANT: Output must be PLAIN TEXT only (no Markdown, no **bold**, no *italics*, no # headings, no backticks).
 
 HOUSE STYLE:
 \"\"\"{HOUSE_STYLE}\"\"\"
@@ -68,13 +83,13 @@ JOB DESCRIPTION:
 \"\"\"{job_description}\"\"\""""
 
     resp = client.chat.completions.create(
-        model="gpt-4o-mini",  # change to "gpt-4o" for highest quality if desired
+        model="gpt-4o-mini",  # use "gpt-4o" for higher quality if desired
         messages=[
             {"role": "system", "content": "You are a precise HR copywriter who follows style guides faithfully."},
             {"role": "user",   "content": prompt},
         ],
         max_tokens=1200,
-        temperature=0.4,
+        temperature=0.35,
     )
     return resp.choices[0].message.content
 
@@ -121,14 +136,16 @@ with tab_single:
                 else:
                     with st.spinner("Generating Neogen-style advert..."):
                         try:
-                            advert = generate_neogen_advert(jd_text)
+                            advert_raw = generate_neogen_advert(jd_text)
+                            advert = strip_markdown(advert_raw)
                         except Exception as e:
                             st.error(f"Generation failed: {e}")
                             advert = ""
 
                     if advert:
                         st.subheader("✅ Generated Job Advert")
-                        st.code(advert)  # copy-to-clipboard icon
+                        st.code(advert)  # plain text with copy button
+
                         edited = st.text_area("Edit before download (optional)", advert, height=260, key="single_edit")
                         use_text = edited if edited.strip() else advert
 
@@ -163,7 +180,8 @@ with tab_batch:
                                       else extract_text_from_pdf(f)
                             if not jd_text:
                                 continue
-                            advert = generate_neogen_advert(jd_text)
+                            advert_raw = generate_neogen_advert(jd_text)
+                            advert = strip_markdown(advert_raw)
                             docx_bytes = to_docx(advert).getvalue()
                             base = os.path.splitext(os.path.basename(f.name))[0]
                             z.writestr(f"{base}_neogen_advert.docx", docx_bytes)
